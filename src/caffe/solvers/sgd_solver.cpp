@@ -1,10 +1,14 @@
 #include <string>
 #include <vector>
+#include <Eigen/Dense>
 
 #include "caffe/sgd_solvers.hpp"
 #include "caffe/util/hdf5.hpp"
 #include "caffe/util/io.hpp"
 #include "caffe/util/upgrade_proto.hpp"
+
+#define CompressRate 2
+#define comp_lr_rate 0.75
 
 namespace caffe {
 
@@ -106,6 +110,7 @@ void SGDSolver<Dtype>::ApplyUpdate() {
         << ", lr = " << rate;
   }
   ClipGradients();
+
   for (int param_id = 0; param_id < this->net_->learnable_params().size();
        ++param_id) {
     Normalize(param_id);
@@ -113,6 +118,98 @@ void SGDSolver<Dtype>::ApplyUpdate() {
     ComputeUpdateValue(param_id, rate);
   }
   this->net_->Update();
+
+  if(this->iter_ % 5 == 0) {
+    LOG(INFO) << "The compression loss is " << Compute_CP_loss();
+    JY_SVD_Compression(0);
+  }
+  
+}
+
+
+template <typename Dtype>
+double SGDSolver<Dtype>::Compute_CP_loss() {
+        
+  double loss = 0.0;
+
+  for (auto layer_tmp : this->net_->layers()) {
+    if (!strcmp(layer_tmp->type(), "Convolution")) {
+
+      Dtype* weight_tmp = layer_tmp->blobs()[0]->mutable_cpu_data();
+
+      Eigen::MatrixXf M(layer_tmp->blobs()[0]->shape(0), layer_tmp->blobs()[0]->count(1));
+      
+      for (int i = 0; i < layer_tmp->blobs()[0]->shape(0); ++i) {
+        for (int j = 0; j < layer_tmp->blobs()[0]->count(1); ++j) {
+          M(i,j) = weight_tmp[i*layer_tmp->blobs()[0]->count(1) + j];
+        }
+      }
+
+
+      Eigen::JacobiSVD<Eigen::MatrixXf> svd(M, Eigen::ComputeFullU | Eigen::ComputeFullV);
+      //Eigen::DiagonalMatrix<float, svd.singularValues().size()> s1(svd.singularValues());
+      //svd.singularValues()[svd.singularValues().size() -1 ] = 0;
+      auto U = svd.matrixU();
+      auto S = svd.singularValues();
+      auto V = svd.matrixV().transpose();
+
+      for(int i = 1; i < CompressRate; ++i) {
+        S[S.size() - i] = 0;
+      }
+
+      auto M1 = U * S * V;
+
+
+      for (int i = 0; i < layer_tmp->blobs()[0]->shape(0); ++i) {
+        for (int j = 0; j < layer_tmp->blobs()[0]->count(1); ++j) {
+          loss += ((M(i, j) - M1(i,j))*(M(i, j) - M1(i,j)));
+        }
+      }
+
+    }
+  }
+
+  return loss;
+}
+
+
+template <typename Dtype>
+void SGDSolver<Dtype>::JY_SVD_Compression(int param_id) {
+  for (auto layer_tmp : this->net_->layers()) {
+    if (!strcmp(layer_tmp->type(), "Convolution")) {
+
+      Dtype* weight_tmp = layer_tmp->blobs()[0]->mutable_cpu_data();
+
+      Eigen::MatrixXf M(layer_tmp->blobs()[0]->shape(0), layer_tmp->blobs()[0]->count(1));
+      
+      for (int i = 0; i < layer_tmp->blobs()[0]->shape(0); ++i) {
+        for (int j = 0; j < layer_tmp->blobs()[0]->count(1); ++j) {
+          M(i,j) = weight_tmp[i*layer_tmp->blobs()[0]->count(1) + j];
+        }
+      }
+
+
+      Eigen::JacobiSVD<Eigen::MatrixXf> svd(M, Eigen::ComputeFullU | Eigen::ComputeFullV);
+      //Eigen::DiagonalMatrix<float, svd.singularValues().size()> s1(svd.singularValues());
+      //svd.singularValues()[svd.singularValues().size() -1 ] = 0;
+      auto U = svd.matrixU();
+      auto S = svd.singularValues();
+      auto V = svd.matrixV().transpose();
+
+      for(int i = 1; i < CompressRate; ++i) {
+        S[S.size() - i] = 0;
+      }
+
+      auto M1 = U * S * V;
+
+      for (int i = 0; i < layer_tmp->blobs()[0]->shape(0); ++i) {
+        for (int j = 0; j < layer_tmp->blobs()[0]->count(1); ++j) {
+          weight_tmp[i*layer_tmp->blobs()[0]->count(1) + j] = (1-comp_lr_rate)*M(i, j) + comp_lr_rate * M1(i,j);
+        }
+      }
+
+    }
+  }
 }
 
 template <typename Dtype>

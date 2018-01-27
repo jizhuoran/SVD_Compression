@@ -4,6 +4,11 @@ set(Caffe_INCLUDE_DIRS "")
 set(Caffe_DEFINITIONS "")
 set(Caffe_COMPILE_OPTIONS "")
 
+# ---[ Eigen
+find_package( Eigen3 REQUIRED )
+list(APPEND Caffe_INCLUDE_DIRS PUBLIC ${EIGEN3_INCLUDE_DIR})
+
+
 # ---[ Boost
 find_package(Boost 1.54 REQUIRED COMPONENTS system thread filesystem)
 list(APPEND Caffe_INCLUDE_DIRS PUBLIC ${Boost_INCLUDE_DIRS})

@@ -28,6 +28,8 @@ class SGDSolver : public Solver<Dtype> {
   Dtype GetLearningRate();
   virtual void ApplyUpdate();
   virtual void Normalize(int param_id);
+  virtual void JY_SVD_Compression(int param_id);
+  virtual double Compute_CP_loss();
   virtual void Regularize(int param_id);
   virtual void ComputeUpdateValue(int param_id, Dtype rate);
   virtual void ClipGradients();
