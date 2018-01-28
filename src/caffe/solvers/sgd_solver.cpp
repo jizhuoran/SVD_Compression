@@ -7,7 +7,7 @@
 #include "caffe/util/io.hpp"
 #include "caffe/util/upgrade_proto.hpp"
 
-#define CompressRate 2
+#define CompressRate 0.125
 #define comp_lr_rate 0.75
 
 namespace caffe {
@@ -153,7 +153,7 @@ double SGDSolver<Dtype>::Compute_CP_loss() {
       auto S = svd.singularValues();
       auto V = svd.matrixV().transpose();
 
-      for(int i = 1; i < CompressRate; ++i) {
+      for(int i = 1; i < CompressRate*S.size(); ++i) {
         S[S.size() - i] = 0;
       }
 
